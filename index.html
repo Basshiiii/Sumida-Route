@@ -400,27 +400,34 @@ function setSheetsWebhookUrl(url){
 }
 function syncToSheet(){
   if(!state.sheetsWebhookUrl){ alert('先にApps Script のWebアプリURLを入力してください'); return; }
-  var items = state.stores.filter(function(s){ return s.status!=='pending' || (s.note && s.note.trim()); })
-    .map(function(s){ return { name:s.name, address:s.address, status:STATUS_LABEL[s.status], note:s.note||'' }; });
-  if(!items.length){ alert('反映する変更がありません'); return; }
+  var items = state.stores.map(function(s){ return { name:s.name, address:s.address, status:STATUS_LABEL[s.status], note:s.note||'' }; });
   sheetsSyncBusy = true; render();
   fetch(state.sheetsWebhookUrl, {
     method:'POST',
     headers:{ 'Content-Type':'text/plain;charset=utf-8' },
     body: JSON.stringify({ items: items })
-  }).then(function(r){ return r.json(); }).then(function(res){
+  }).then(function(r){
+    return r.text().then(function(text){ return { ok:r.ok, status:r.status, text:text }; });
+  }).then(function(resp){
     sheetsSyncBusy = false; render();
-    if(res && res.ok) alert('スプレッドシートに反映しました（'+res.updated+'件更新、'+(items.length-res.updated)+'件は該当行が見つかりませんでした）');
-    else alert('反映に失敗しました: ' + (res && res.error ? res.error : '不明なエラー'));
+    var res = null;
+    try{ res = JSON.parse(resp.text); }catch(e){}
+    if(res && res.ok){
+      alert('スプレッドシートに反映しました（'+res.updated+'件更新、'+(items.length-res.updated)+'件は該当行が見つかりませんでした）');
+    } else if(res && res.error){
+      alert('反映に失敗しました: ' + res.error);
+    } else {
+      alert('サーバーからの応答が想定と違いました(HTTP '+resp.status+')。\nApps Scriptのデプロイ設定(全員に公開・doPost)をご確認ください。\n\n応答内容(先頭200文字):\n' + resp.text.slice(0,200));
+    }
   }).catch(function(err){
     sheetsSyncBusy = false; render();
-    alert('通信エラーで反映できませんでした。URLが正しいか、Apps Scriptが正しく公開されているか確認してください。\n('+err.message+')');
+    alert('通信エラーで反映できませんでした(ネットワークに届きませんでした)。URLの入力ミスがないか確認してください。\n('+err.message+')');
   });
 }
 function renderSheetsSyncBox(){
   var box = el('div','savebox');
   box.appendChild(el('h2',null,'📊 スプレッドシートに反映'));
-  box.appendChild(el('div','muted','Google Apps Script のWebアプリURLを一度だけ設定すると、ボタン一つで進捗・備考を元のスプレッドシート(シート2)に書き戻せます。'));
+  box.appendChild(el('div','muted','Google Apps Script のWebアプリURLを一度だけ設定すると、ボタン一つで全店舗の進捗(未対応も含む)・備考を元のスプレッドシート(シート2)に書き戻せます。'));
   var urlInput = document.createElement('input');
   urlInput.type = 'text'; urlInput.placeholder = 'https://script.google.com/macros/s/.../exec';
   urlInput.value = state.sheetsWebhookUrl || '';
