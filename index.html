@@ -720,6 +720,14 @@ function renderMap(view){
   skipBtn.onclick = function(){ setStatus(s.no,'skip'); };
   statusRow.appendChild(doneBtn); statusRow.appendChild(absentBtn); statusRow.appendChild(skipBtn);
   card.appendChild(statusRow);
+
+  var noteInput2 = document.createElement('input');
+  noteInput2.type = 'text'; noteInput2.className = 'noteinput';
+  noteInput2.placeholder = '備考(言われたこと・不在時の様子など)';
+  noteInput2.value = s.note || '';
+  noteInput2.onchange = function(){ setNote(s.no, noteInput2.value); };
+  card.appendChild(noteInput2);
+
   view.appendChild(card);
 
   var locRow = el('div','loc-row');
