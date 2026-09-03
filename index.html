@@ -115,6 +115,7 @@
   .store .addr{ font-size:12.5px; color:var(--ink-soft); margin-top:2px; overflow-wrap:anywhere; }
   .store .cat{ font-size:11px; color:var(--ink-faint); margin-top:3px; }
   .store .actions{ display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .store .noteinput{ margin-top:8px; font-size:12.5px; padding:7px 9px; }
   .pill{ border:1px solid var(--surface-2); background:var(--surface-3); color:var(--ink-soft); font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:99px; cursor:pointer; font-family:"Zen Kaku Gothic New",sans-serif; }
   .pill.active-pending{ background:var(--pending-soft); color:var(--ink); border-color:var(--pending-soft); }
   .pill.active-done{ background:var(--done-soft); color:var(--done); border-color:var(--done-soft); }
@@ -199,6 +200,8 @@ if(state.pinnedFirst===undefined) state.pinnedFirst = null;
 if(!state.startTime) state.startTime = "11:00";
 if(!state.endTime) state.endTime = "15:00";
 if(!state.activeTab || state.activeTab==='plan' || state.activeTab==='drive' || state.activeTab==='list') state.activeTab = state.activeTab==='list' ? 'list' : 'map';
+if(!state.sheetsWebhookUrl) state.sheetsWebhookUrl = '';
+state.stores.forEach(function(s){ if(s.note===undefined) s.note = ''; });
 
 var myPos = null; // {lat,lng,source,label,at} — device-local, not exported by default
 var mapFocusArea = null;
@@ -389,6 +392,50 @@ function importStateFromFile(file){
   reader.readAsText(file);
 }
 
+/* ---------- Google Sheets sync (via Apps Script Web App) ---------- */
+var sheetsSyncBusy = false;
+function setSheetsWebhookUrl(url){
+  state.sheetsWebhookUrl = url.trim();
+  saveLocal();
+}
+function syncToSheet(){
+  if(!state.sheetsWebhookUrl){ alert('先にApps Script のWebアプリURLを入力してください'); return; }
+  var items = state.stores.filter(function(s){ return s.status!=='pending' || (s.note && s.note.trim()); })
+    .map(function(s){ return { name:s.name, address:s.address, status:STATUS_LABEL[s.status], note:s.note||'' }; });
+  if(!items.length){ alert('反映する変更がありません'); return; }
+  sheetsSyncBusy = true; render();
+  fetch(state.sheetsWebhookUrl, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify({ items: items })
+  }).then(function(r){ return r.json(); }).then(function(res){
+    sheetsSyncBusy = false; render();
+    if(res && res.ok) alert('スプレッドシートに反映しました（'+res.updated+'件更新、'+(items.length-res.updated)+'件は該当行が見つかりませんでした）');
+    else alert('反映に失敗しました: ' + (res && res.error ? res.error : '不明なエラー'));
+  }).catch(function(err){
+    sheetsSyncBusy = false; render();
+    alert('通信エラーで反映できませんでした。URLが正しいか、Apps Scriptが正しく公開されているか確認してください。\n('+err.message+')');
+  });
+}
+function renderSheetsSyncBox(){
+  var box = el('div','savebox');
+  box.appendChild(el('h2',null,'📊 スプレッドシートに反映'));
+  box.appendChild(el('div','muted','Google Apps Script のWebアプリURLを一度だけ設定すると、ボタン一つで進捗・備考を元のスプレッドシート(シート2)に書き戻せます。'));
+  var urlInput = document.createElement('input');
+  urlInput.type = 'text'; urlInput.placeholder = 'https://script.google.com/macros/s/.../exec';
+  urlInput.value = state.sheetsWebhookUrl || '';
+  urlInput.style.marginTop = '8px';
+  urlInput.onchange = function(){ setSheetsWebhookUrl(urlInput.value); };
+  box.appendChild(urlInput);
+  var btnRow2 = el('div','btn-row'); btnRow2.style.marginTop='8px';
+  var syncBtn = el('button','btn btn-primary', sheetsSyncBusy ? '反映中…' : '📤 スプレッドシートに反映');
+  syncBtn.disabled = sheetsSyncBusy;
+  syncBtn.onclick = function(){ syncToSheet(); };
+  btnRow2.appendChild(syncBtn);
+  box.appendChild(btnRow2);
+  return box;
+}
+
 /* ---------- mutations ---------- */
 function setStatus(no, status){
   var s = storeById(no);
@@ -396,6 +443,12 @@ function setStatus(no, status){
   s.status = status;
   s.statusAt = Date.now();
   render();
+  saveLocal();
+}
+function setNote(no, note){
+  var s = storeById(no);
+  if(!s) return;
+  s.note = note;
   saveLocal();
 }
 function toggleSelected(no){
@@ -585,6 +638,14 @@ function storeRow(s){
     actions.appendChild(pinBtn);
   }
   body.appendChild(actions);
+
+  var noteInput = document.createElement('input');
+  noteInput.type = 'text'; noteInput.className = 'noteinput';
+  noteInput.placeholder = '備考(言われたこと・不在時の様子など)';
+  noteInput.value = s.note || '';
+  noteInput.onchange = function(){ setNote(s.no, noteInput.value); };
+  body.appendChild(noteInput);
+
   row.appendChild(body);
   return row;
 }
@@ -777,6 +838,8 @@ function renderList(view){
   saveBtnRow.appendChild(exportBtn); saveBtnRow.appendChild(importLabel);
   saveBox.appendChild(saveBtnRow);
   view.appendChild(saveBox);
+
+  view.appendChild(renderSheetsSyncBox());
 
   view.appendChild(filterCard());
   var list = filteredStores();
