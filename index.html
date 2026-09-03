@@ -115,7 +115,9 @@
   .store .addr{ font-size:12.5px; color:var(--ink-soft); margin-top:2px; overflow-wrap:anywhere; }
   .store .cat{ font-size:11px; color:var(--ink-faint); margin-top:3px; }
   .store .actions{ display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
-  .store .noteinput{ margin-top:8px; font-size:12.5px; padding:7px 9px; }
+  .notewrap{ margin-top:10px; background:var(--pending-soft); border-radius:10px; padding:8px 9px 9px; }
+  .notelabel{ font-size:11px; font-weight:700; color:var(--ink-soft); margin-bottom:4px; font-family:"Zen Kaku Gothic New",sans-serif; }
+  input.noteinput{ margin-top:0; font-size:12.5px; padding:7px 9px; background:var(--surface); }
   .pill{ border:1px solid var(--surface-2); background:var(--surface-3); color:var(--ink-soft); font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:99px; cursor:pointer; font-family:"Zen Kaku Gothic New",sans-serif; }
   .pill.active-pending{ background:var(--pending-soft); color:var(--ink); border-color:var(--pending-soft); }
   .pill.active-done{ background:var(--done-soft); color:var(--done); border-color:var(--done-soft); }
@@ -452,6 +454,19 @@ function setStatus(no, status){
   render();
   saveLocal();
 }
+function noteField(s){
+  var wrap = el('div','notewrap');
+  var label = el('div','notelabel','📝 備考（言われたこと・不在時の様子など）');
+  wrap.appendChild(label);
+  var input = document.createElement('input');
+  input.type = 'text'; input.className = 'noteinput';
+  input.placeholder = '例: 夕方また来て、と言われた';
+  input.value = s.note || '';
+  input.dataset.focusKey = 'note-' + s.no;
+  input.onchange = function(){ setNote(s.no, input.value); };
+  wrap.appendChild(input);
+  return wrap;
+}
 function setNote(no, note){
   var s = storeById(no);
   if(!s) return;
@@ -535,6 +550,9 @@ function focusMapOnArea(area){
 var appRoot;
 function render(){
   if(!appRoot) return;
+  var active = document.activeElement;
+  var focusKey = (active && active.dataset) ? active.dataset.focusKey : null;
+  var focusSel = focusKey ? { start: active.selectionStart, end: active.selectionEnd } : null;
   clear(appRoot);
   appRoot.appendChild(renderTopbar());
   var view = el('div','view active');
@@ -542,6 +560,15 @@ function render(){
   else renderMap(view);
   appRoot.appendChild(view);
   appRoot.appendChild(renderTabbar());
+  if(focusKey){
+    var restored = appRoot.querySelector('[data-focus-key="'+focusKey+'"]');
+    if(restored){
+      restored.focus();
+      if(focusSel && restored.setSelectionRange){
+        try{ restored.setSelectionRange(focusSel.start, focusSel.end); }catch(e){}
+      }
+    }
+  }
 }
 
 function renderTopbar(){
@@ -604,6 +631,7 @@ function filterCard(){
   card.appendChild(chips2);
 
   var q = el('input'); q.type='search'; q.placeholder='店名・住所で検索'; q.value=state.filters.q; q.style.marginTop='8px';
+  q.dataset.focusKey = 'search-q';
   q.oninput = function(){ state.filters.q = q.value; render(); saveLocal(); };
   card.appendChild(q);
   return card;
@@ -646,12 +674,7 @@ function storeRow(s){
   }
   body.appendChild(actions);
 
-  var noteInput = document.createElement('input');
-  noteInput.type = 'text'; noteInput.className = 'noteinput';
-  noteInput.placeholder = '備考(言われたこと・不在時の様子など)';
-  noteInput.value = s.note || '';
-  noteInput.onchange = function(){ setNote(s.no, noteInput.value); };
-  body.appendChild(noteInput);
+  body.appendChild(noteField(s));
 
   row.appendChild(body);
   return row;
@@ -721,12 +744,7 @@ function renderMap(view){
   statusRow.appendChild(doneBtn); statusRow.appendChild(absentBtn); statusRow.appendChild(skipBtn);
   card.appendChild(statusRow);
 
-  var noteInput2 = document.createElement('input');
-  noteInput2.type = 'text'; noteInput2.className = 'noteinput';
-  noteInput2.placeholder = '備考(言われたこと・不在時の様子など)';
-  noteInput2.value = s.note || '';
-  noteInput2.onchange = function(){ setNote(s.no, noteInput2.value); };
-  card.appendChild(noteInput2);
+  card.appendChild(noteField(s));
 
   view.appendChild(card);
 
