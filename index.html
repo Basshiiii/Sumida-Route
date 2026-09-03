@@ -632,7 +632,17 @@ function filterCard(){
 
   var q = el('input'); q.type='search'; q.placeholder='店名・住所で検索'; q.value=state.filters.q; q.style.marginTop='8px';
   q.dataset.focusKey = 'search-q';
-  q.oninput = function(){ state.filters.q = q.value; render(); saveLocal(); };
+  var qComposing = false;
+  q.addEventListener('compositionstart', function(){ qComposing = true; });
+  q.addEventListener('compositionend', function(){
+    qComposing = false;
+    state.filters.q = q.value;
+    render(); saveLocal();
+  });
+  q.oninput = function(){
+    state.filters.q = q.value;
+    if(!qComposing){ render(); saveLocal(); }
+  };
   card.appendChild(q);
   return card;
 }
