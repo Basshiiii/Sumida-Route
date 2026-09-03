@@ -204,6 +204,15 @@ if(!state.endTime) state.endTime = "15:00";
 if(!state.activeTab || state.activeTab==='plan' || state.activeTab==='drive' || state.activeTab==='list') state.activeTab = state.activeTab==='list' ? 'list' : 'map';
 if(!state.sheetsWebhookUrl) state.sheetsWebhookUrl = '';
 state.stores.forEach(function(s){ if(s.note===undefined) s.note = ''; });
+if(state.filters.noFrom===undefined) state.filters.noFrom = null;
+if(state.filters.noTo===undefined) state.filters.noTo = null;
+(function(){
+  var counters = {};
+  state.stores.forEach(function(s){
+    counters[s.area] = (counters[s.area]||0) + 1;
+    s.areaNo = counters[s.area];
+  });
+})();
 
 var myPos = null; // {lat,lng,source,label,at} — device-local, not exported by default
 var mapFocusArea = null;
@@ -347,6 +356,8 @@ function filteredStores(){
       var q = f.q.toLowerCase();
       if(s.name.toLowerCase().indexOf(q)===-1 && s.address.toLowerCase().indexOf(q)===-1) return false;
     }
+    if(f.noFrom!=null && s.areaNo < f.noFrom) return false;
+    if(f.noTo!=null && s.areaNo > f.noTo) return false;
     return true;
   });
 }
@@ -644,6 +655,22 @@ function filterCard(){
     if(!qComposing){ render(); saveLocal(); }
   };
   card.appendChild(q);
+
+  var rangeRow = el('div','field-row'); rangeRow.style.marginTop='8px';
+  var fromInput = document.createElement('input');
+  fromInput.type = 'number'; fromInput.min = '1'; fromInput.placeholder = '開始番号';
+  fromInput.value = state.filters.noFrom!=null ? state.filters.noFrom : '';
+  fromInput.onchange = function(){ state.filters.noFrom = fromInput.value!=='' ? parseInt(fromInput.value,10) : null; render(); saveLocal(); };
+  var toInput = document.createElement('input');
+  toInput.type = 'number'; toInput.min = '1'; toInput.placeholder = '終了番号';
+  toInput.value = state.filters.noTo!=null ? state.filters.noTo : '';
+  toInput.onchange = function(){ state.filters.noTo = toInput.value!=='' ? parseInt(toInput.value,10) : null; render(); saveLocal(); };
+  rangeRow.appendChild(fromInput);
+  rangeRow.appendChild(el('span',null,'〜'));
+  rangeRow.appendChild(toInput);
+  card.appendChild(rangeRow);
+  card.appendChild(el('div','muted','番号はエリアごとの通し番号です（例: 京島を選んで 1〜50 のように絞り込めます）'));
+
   return card;
 }
 
@@ -658,11 +685,11 @@ function storeRow(s){
 
   var body = el('div','body');
   var row1 = el('div','row1');
-  row1.appendChild(el('span','no','#'+s.no));
+  row1.appendChild(el('span','no',s.area+' #'+s.areaNo));
   row1.appendChild(el('span','name',s.name));
   body.appendChild(row1);
   body.appendChild(el('div','addr', s.address));
-  body.appendChild(el('div','cat', '['+s.area+'] '+(s.category||'')));
+  body.appendChild(el('div','cat', s.category||''));
   if(s.status!=='pending' && s.statusAt){
     body.appendChild(el('div','cat', STATUS_LABEL[s.status]+': '+fmtWhen(s.statusAt)));
   }
@@ -728,7 +755,7 @@ function renderMap(view){
   card.appendChild(el('div','next-label', pinnedStore ? '📌 指定した訪問先' : '🧭 次はここ（現在地から最短）'));
   card.appendChild(el('div','next-name', s.name));
   card.appendChild(el('div','next-addr', s.address));
-  card.appendChild(el('div','next-cat', '['+s.area+'] '+(s.category||'')));
+  card.appendChild(el('div','next-cat', '['+s.area+' #'+s.areaNo+'] '+(s.category||'')));
   if(next.km!=null) card.appendChild(el('div','next-dist','現在地から 約'+fmtDist(next.km)));
   if(pinnedStore){
     var pinBadge = el('div','pin-badge');
